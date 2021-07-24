@@ -110,8 +110,11 @@ plot_smooth = True
 plot_seasonal = True
 
 nsmooth = 60
-nfft = 32                   # power of 2
-station_code = '037401'     # CET
+nfft = 16                   # power of 2
+#station_code = '037401'    # CET
+#station_code = '103810'    # Berlin-Dahlem
+#station_code = '744920'    # BHO
+station_code = '071560'     # Paris/Montsouris
 
 #------------------------------------------------------------------------------
 # METHODS: 
@@ -178,6 +181,9 @@ def smooth_fft(x, span):
     y_filtered = fftpack.irfft(w)
     x_filtered = y_filtered + np.nanmean(x)
     return x_filtered
+
+#def cru_filter(x):  
+#    return x_filtered
 
 #------------------------------------------------------------------------------    
 # LOAD: GloSAT temperature archive: CRUTEM5.0.1.0

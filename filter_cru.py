@@ -27,8 +27,9 @@ import matplotlib.pyplot as plt
 fontsize = 16
 baseline_start = 1981
 baseline_end = 2010
-stationcode = '071560'
-thalf = 30
+#stationcode = '071560'
+stationcode = '744920'
+thalf = 300
 nan = False
 truncate = 0
 
@@ -236,8 +237,9 @@ fig, ax = plt.subplots(figsize=(15,10))
 plt.fill_between(t, 0, tsin, ls='-', lw=3, color='black', alpha=0.1, zorder=1, label=r'tsin')
 plt.plot(t, tslow.T, ls='-', lw=3, color='teal', alpha=1, zorder=1, label=r'tslow')
 plt.plot(t, tshigh.T, ls='--', lw=1, color='teal', alpha=1, zorder=1, label=r'tshigh')
+plt.axhline(y=np.nanmean(tshigh.T), ls='--', lw=1, color='black', alpha=1, zorder=1, label=r'$\mu(tshigh)$')
 plt.xlabel('Year', fontsize=fontsize)
-ax.set_xlim(pd.to_datetime('1720-01-01'),pd.to_datetime('2021-01-01'))
+#ax.set_xlim(pd.to_datetime('1720-01-01'),pd.to_datetime('2021-01-01'))
 plt.ylabel(r'2m Temperature anomaly (from ' + str(baseline_start) + '-' + str(baseline_end) + r'), $^{\circ}$C', fontsize=fontsize)
 plt.title(titlestr, fontsize=fontsize)
 plt.tick_params(labelsize=fontsize)    

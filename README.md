@@ -7,8 +7,12 @@ Python codebase to calculate FFT-filtered seasonal means for long station timese
 
 ## Contents
 
-* `extract-station-seasonal-means.py` - python script to calculate MA, LOESS and FFT smoothing and seasonal means for a GloSAT.p03 station
 * `uppsala-300.py` - python script to compare seasonal means from Uppsala and Stockholm
+* `extract-station-seasonal-means.py` - python script to calculate MA, LOESS and FFT smoothing and seasonal means for a GloSAT.p03 station
+* `ts-fft-filter-lowpass-no-window.py` - python script FFT low pass filter using a cut-off frequency
+* `ts-fft-filter-lowpass-hamming-window.py` - python script FFT low pass filter using a hamming window filter
+* `ts-fft-filter-lowpass-extrapolation.py` - python script FFT low pass filter extrapolation
+* `filter_cru.py` - python script of IDL filter_cru.pro Gaussian filter code
 
 ## Instructions for use
 
@@ -23,10 +27,14 @@ Then create a DATA/ directory and copy to it the required GloSAT.p03 pickled tem
 
 The code is designed to run in an environment using Miniconda3-latest-Linux-x86_64.
 
-    $ python extract-station-seasonal-means.py
     $ python uppsala-300.py
+    $ python extract-station-seasonal-means.py
+    $ python ts-fft-filter-lowpass-no-window.py
+    $ python ts-fft-filter-lowpass-hamming-window.py
+    $ python ts-fft-filter-lowpass-extrapolation.py
+    $ python filter_cru.py
 
-This will generate a plot of the smoothed timeseries and seasonal mean extracts.
+This will generate plots of the smoothed timeseries and seasonal mean extracts.
 
 ## License
 

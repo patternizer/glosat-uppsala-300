@@ -9,8 +9,9 @@ Python codebase to extract seasonal means for Uppsala (024581) and Stockholm (02
 
 ## Contents
 
-* `uppsala-300.py` - python script to compare instrumental land surface temperature timeseries from Uppsala and Stockholm
-* `extract-station-seasonal-means.py` - python script to extract seasonal means
+* `uppsala-seasonal-means-and-nao.py` - python script to compare seasonal mean instrumental land surface temperature timeseries from Uppsala with seasonal NAO
+* `uppsala-stockholm-comparison.py` - python script to compare instrumental land surface temperature timeseries from Uppsala and Stockholm
+* `seasonal-means-wrapper.py` - python script to extract seasonal means
 
 ## Instructions for use
 
@@ -25,11 +26,10 @@ Then create a DATA/ directory and copy to it the required GloSAT.p03 pickled tem
 
 The code is designed to run in an environment using Miniconda3-latest-Linux-x86_64.
 
-    $ python uppsala-300.py
-    $ python extract-station-seasonal-means.py
-
-This will generate plots of the smoothed timeseries and seasonal mean extracts.
-
+    $ python uppsala-seasonal-means-and-nao.py
+    $ python uppsala-stockholm-comparison.py
+    $ python seasonal-means-wrapper.py
+    
 ## License
 
 The code is distributed under terms and conditions of the [Open Government License](http://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/).

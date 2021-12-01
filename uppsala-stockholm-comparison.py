@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 #------------------------------------------------------------------------------
-# PROGRAM: uppsala-300.py
+# PROGRAM: uppsala-stockholm-comparison.py
 #------------------------------------------------------------------------------
 # Version 0.1
 # 20 July, 2021
@@ -254,6 +254,7 @@ if plot_differences == True:
     sns.lineplot(x=df_uppsala.index, y='Tg', data=df_uppsala, ax=axs[0], marker='o', color='red', alpha=1.0, label='Uppsala (024581) $T_{g}$')
     sns.lineplot(x=df_stockholm.index, y='Tg', data=df_stockholm, ax=axs[0], marker='.', color='blue', alpha=1.0, label='Stockholm (024851) $T_{g}$')    
     sns.lineplot(x=df_uppsala.index[mask], y=df_uppsala['Tg'][mask]-df_stockholm['Tg'][mask], ax=axs[1], color='teal')    
+    plt.axhline(y=0.0, ls='dashed', lw=1, color='black')
     axs[0].legend(loc='lower right', ncol=1, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)       
     axs[0].set_xlabel('', fontsize=fontsize)
     if use_anomalies == True:

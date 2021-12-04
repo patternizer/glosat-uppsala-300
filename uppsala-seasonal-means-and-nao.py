@@ -31,9 +31,9 @@ from netCDF4 import Dataset, num2date, date2num
 # Plotting libraries:
 import matplotlib
 import matplotlib.pyplot as plt; plt.close('all')
-import matplotlib.cm as cm
-from matplotlib import colors as mcol
-from matplotlib.cm import ScalarMappable
+#import matplotlib.cm as cm
+#from matplotlib import colors as mcol
+#from matplotlib.cm import ScalarMappable
 from pandas.plotting import register_matplotlib_converters
 register_matplotlib_converters()
 from matplotlib import rcParams
@@ -46,7 +46,7 @@ from matplotlib import rcParams
 #from mpl_toolkits.mplot3d import Axes3D
 #from mpl_toolkits.mplot3d import proj3d
 #import cmocean
-#import seaborn as sns; sns.set()
+import seaborn as sns; sns.set()
 
 # OS libraries:
 import os
@@ -95,7 +95,6 @@ warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 
 #------------------------------------------------------------------------------
 import filter_cru_dft as cru # CRU DFT filter
-#import filter_cru_dft as cru_filter # CRU DFT filter
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
@@ -119,6 +118,7 @@ use_anomalies = True
 
 nsmooth = 60                 # 5yr MA monthly
 nfft = 16                    # power of 2 for the DFT
+loess_frac = 0.2             # LOESS window 
 
 station_code = '024581'     # Uppsala 
 
@@ -129,8 +129,6 @@ station_code = '024581'     # Uppsala
 if use_dark_theme == True:
     
     matplotlib.rcParams['text.usetex'] = False
-#    rcParams['font.family'] = 'sans-serif'
-#    rcParams['font.sans-serif'] = ['Avant Garde', 'Lucida Grande', 'Verdana', 'DejaVu Sans' ]
     plt.rc('text',color='white')
     plt.rc('lines',color='white')
     plt.rc('patch',edgecolor='white')
@@ -147,22 +145,22 @@ if use_dark_theme == True:
     
 else:
 
-    matplotlib.rcParams['text.usetex'] = False
-#    rcParams['font.family'] = 'sans-serif'
-#    rcParams['font.sans-serif'] = ['Avant Garde', 'Lucida Grande', 'Verdana', 'DejaVu Sans' ]
-    plt.rc('text',color='black')
-    plt.rc('lines',color='black')
-    plt.rc('patch',edgecolor='black')
-    plt.rc('grid',color='lightgray')
-    plt.rc('xtick',color='black')
-    plt.rc('ytick',color='black')
-    plt.rc('axes',labelcolor='black')
-    plt.rc('axes',facecolor='white')    
-    plt.rc('axes',edgecolor='black')
-    plt.rc('figure',facecolor='white')
-    plt.rc('figure',edgecolor='white')
-    plt.rc('savefig',edgecolor='white')
-    plt.rc('savefig',facecolor='white')
+    print('using Seasborn graphics ...')
+    
+#    matplotlib.rcParams['text.usetex'] = False
+#    plt.rc('text',color='black')
+#    plt.rc('lines',color='black')
+#    plt.rc('patch',edgecolor='black')
+#    plt.rc('grid',color='lightgray')
+#    plt.rc('xtick',color='black')
+#    plt.rc('ytick',color='black')
+#    plt.rc('axes',labelcolor='black')
+#    plt.rc('axes',facecolor='white')    
+#    plt.rc('axes',edgecolor='black')
+#    plt.rc('figure',facecolor='white')
+#    plt.rc('figure',edgecolor='white')
+#    plt.rc('savefig',edgecolor='white')
+#    plt.rc('savefig',facecolor='white')
 
 # Calculate current time
 
@@ -240,7 +238,6 @@ station_name = df['stationname'].unique()[0]
     
 # SET: time axis container
         
-# df_yearly = pd.DataFrame({'year': np.arange( 1780, 2021 )}) # 1780-2020 inclusive
 df_yearly = pd.DataFrame({'year': np.arange( 1678, 2022 )}) # 1678-2020 inclusive
 dt = df_yearly.merge(df, how='left', on='year')
     
@@ -282,8 +279,8 @@ df_yearly_sd = pd.DataFrame({'Tg':df_xr_resampled_sd.Tg.values}, index = df_xr_r
    
 # CALCULATE: LOESS fit (use Pandas rolling to interpolate and
     
-lowess = sm.nonparametric.lowess(df['Tg'].values[mask], df['Tg'].index[mask], frac=0.1)       
-da = pd.DataFrame({'LOESS':lowess[:,1]}, index=df['Tg'].index[mask])
+loess = sm.nonparametric.lowess(df['MA'].values[mask], df['MA'].index[mask], frac=loess_frac)       
+da = pd.DataFrame({'LOESS':loess[:,1]}, index=df['MA'].index[mask])
 df['LOESS'] = da                     
 
 # CALCULATE: FFT low pass
@@ -454,7 +451,7 @@ else:
 # PLOT: seasonal timeseries
 #------------------------------------------------------------------------------    
     
-print('plotting DJF seasonal timeseries ... ')   
+print('plotting seasonal timeseries ... ')   
                             
 figstr = station_code + '-' + 'anomaly' + '-' + 'vs' + '-' + 'nao' + '-' 'timeseries' + '-' + season + '.png'
 titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') ' + season + ' seasonal mean $T_g$ anomaly (from 1961-1990) vs NAO'
@@ -474,7 +471,7 @@ fig.tight_layout()
 plt.savefig(figstr, dpi=300, bbox_inches='tight')
 plt.close('all')
 
-print('plotting DJF seasonal timeseries ( 130 intervals ) ... ')   
+print('plotting seasonal timeseries ( 130 intervals ) ... ')   
                             
 figstr = station_code + '-' + 'anomaly' + '-' + 'vs' + '-' + 'nao' + '-' 'timeseries' + '-' + season + '-' + '130 years' + '.png'
 titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') ' + season + ' seasonal mean $T_g$ anomaly (from 1961-1990) vs NAO'
@@ -502,7 +499,7 @@ plt.close('all')
 # PLOT: seasonal correlation
 #------------------------------------------------------------------------------    
 
-print('plotting DJF seasonal correlation ... ')   
+print('plotting seasonal correlation ... ')   
    
 figstr = station_code + '-' + 'anomaly' + '-' + 'vs' + '-' + 'nao' + '-' 'correlation' + '-' + season + '.png'
 titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') ' + season + ' seasonal mean $T_g$ anomaly (from 1961-1990) vs NAO'

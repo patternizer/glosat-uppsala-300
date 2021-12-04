@@ -31,22 +31,11 @@ from netCDF4 import Dataset, num2date, date2num
 # Plotting libraries:
 import matplotlib
 import matplotlib.pyplot as plt; plt.close('all')
-import matplotlib.cm as cm
-from matplotlib import colors as mcol
-from matplotlib.cm import ScalarMappable
+from matplotlib.patches import Polygon # for boxplot colours
 from pandas.plotting import register_matplotlib_converters
 register_matplotlib_converters()
 from matplotlib import rcParams
-#import matplotlib.dates as mdates
-#import matplotlib.colors as mcolors
-#import matplotlib.ticker as mticker
-#from matplotlib.ticker import FuncFormatter
-#from matplotlib.collections import PolyCollection
-#from mpl_toolkits import mplot3d
-#from mpl_toolkits.mplot3d import Axes3D
-#from mpl_toolkits.mplot3d import proj3d
-#import cmocean
-#import seaborn as sns; sns.set()
+import seaborn as sns; sns.set()
 
 # OS libraries:
 import os
@@ -95,7 +84,6 @@ warnings.filterwarnings("ignore", message="numpy.ufunc size changed")
 
 #------------------------------------------------------------------------------
 import filter_cru_dft as cru # CRU DFT filter
-#import filter_cru_dft as cru_filter # CRU DFT filter
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
@@ -114,9 +102,11 @@ else:
     temperature_unit = 'C'
 
 use_anomalies = True
+use_fft_edge_truncation = False
 
 nsmooth = 60                 # 5yr MA monthly
 nfft = 16                    # power of 2 for the DFT
+loess_frac = 0.2             # LOESS window 
 
 #station_code = '037401'     # CET
 #station_code = '744920'     # BHO
@@ -135,8 +125,6 @@ station_code = '024581'     # Uppsala
 if use_dark_theme == True:
     
     matplotlib.rcParams['text.usetex'] = False
-#    rcParams['font.family'] = 'sans-serif'
-#    rcParams['font.sans-serif'] = ['Avant Garde', 'Lucida Grande', 'Verdana', 'DejaVu Sans' ]
     plt.rc('text',color='white')
     plt.rc('lines',color='white')
     plt.rc('patch',edgecolor='white')
@@ -153,22 +141,22 @@ if use_dark_theme == True:
     
 else:
 
-    matplotlib.rcParams['text.usetex'] = False
-#    rcParams['font.family'] = 'sans-serif'
-#    rcParams['font.sans-serif'] = ['Avant Garde', 'Lucida Grande', 'Verdana', 'DejaVu Sans' ]
-    plt.rc('text',color='black')
-    plt.rc('lines',color='black')
-    plt.rc('patch',edgecolor='black')
-    plt.rc('grid',color='lightgray')
-    plt.rc('xtick',color='black')
-    plt.rc('ytick',color='black')
-    plt.rc('axes',labelcolor='black')
-    plt.rc('axes',facecolor='white')    
-    plt.rc('axes',edgecolor='black')
-    plt.rc('figure',facecolor='white')
-    plt.rc('figure',edgecolor='white')
-    plt.rc('savefig',edgecolor='white')
-    plt.rc('savefig',facecolor='white')
+	print('using Seaborn graphics ...')
+
+#    matplotlib.rcParams['text.usetex'] = False
+#    plt.rc('text',color='black')
+#    plt.rc('lines',color='black')
+#    plt.rc('patch',edgecolor='black')
+#    plt.rc('grid',color='lightgray')
+#    plt.rc('xtick',color='black')
+#    plt.rc('ytick',color='black')
+#    plt.rc('axes',labelcolor='black')
+#    plt.rc('axes',facecolor='white')    
+#    plt.rc('axes',edgecolor='black')
+#    plt.rc('figure',facecolor='white')
+#    plt.rc('figure',edgecolor='white')
+#    plt.rc('savefig',edgecolor='white')
+#    plt.rc('savefig',facecolor='white')
 
 # Calculate current time
 
@@ -223,7 +211,6 @@ station_name = df['stationname'].unique()[0]
     
 # SET: time axis container
         
-# df_yearly = pd.DataFrame({'year': np.arange( 1780, 2021 )}) # 1780-2020 inclusive
 df_yearly = pd.DataFrame({'year': np.arange( 1678, 2022 )}) # 1678-2020 inclusive
 dt = df_yearly.merge(df, how='left', on='year')
     
@@ -263,24 +250,18 @@ df_xr_resampled_sd = df_xr.Tg.resample(index='AS').std().to_dataset()
 df_yearly = pd.DataFrame({'Tg':df_xr_resampled.Tg.values}, index = df_xr_resampled.index.values)
 df_yearly_sd = pd.DataFrame({'Tg':df_xr_resampled_sd.Tg.values}, index = df_xr_resampled_sd.index.values)
    
-# CALCULATE: LOESS fit (use Pandas rolling to interpolate and
+# CALCULATE: LOESS fit ( use Pandas rolling to interpolate )
     
-lowess = sm.nonparametric.lowess(df['Tg'].values[mask], df['Tg'].index[mask], frac=0.1)       
-da = pd.DataFrame({'LOESS':lowess[:,1]}, index=df['Tg'].index[mask])
+loess = sm.nonparametric.lowess(df['MA'].values[mask], df['MA'].index[mask], frac=loess_frac)       
+da = pd.DataFrame({'LOESS':loess[:,1]}, index=df['MA'].index[mask])
 df['LOESS'] = da                     
 
 # CALCULATE: FFT low pass
 
 da = pd.DataFrame({'FFT':smooth_fft(df['MA'].values[mask], nfft)}, index=df['MA'].index[mask])
 df['FFT'] = da.rolling(nsmooth, center=True).mean()
-# df['FFT'] = da[(da.index>da.index[int(nfft/2)]) & (da.index<=da.index[-int(nfft/2)])] # edge effect truncation
-    
-# RESAMPLE: seasonal weighted means
-    
-#    month_length = df_uppsala_xr.index.dt.days_in_month
-#    weights = month_length.groupby('index.season') / month_length.groupby('index.season').sum()
-#    df_seasonal_xr = (df_uppsala_xr * weights).groupby('index.season').sum(dim='index')    
-    
+if use_fft_edge_truncation == True: df['FFT'] = da[(da.index>da.index[int(nfft/2)]) & (da.index<=da.index[-int(nfft/2)])] # edge effect truncation
+        
 # EXTRACT: seasonal components ( D from first year only --> N-1 seasonal estimates )
 
 trim_months = len(t_monthly)%12
@@ -301,11 +282,7 @@ df_seasonal_fft['JJA'] = pd.DataFrame({'DJF':smooth_fft(df_seasonal['JJA'].value
 df_seasonal_fft['SON'] = pd.DataFrame({'DJF':smooth_fft(df_seasonal['SON'].values[mask['SON']], nfft)}, index=df_seasonal['SON'].index[mask['SON']])
 df_seasonal_fft['ONDJFM'] = pd.DataFrame({'ONDJFM':smooth_fft(df_seasonal['ONDJFM'].values[mask['ONDJFM']], nfft)}, index=df_seasonal['ONDJFM'].index[mask['ONDJFM']])
 df_seasonal_fft['AMJJAS'] = pd.DataFrame({'AMJJAS':smooth_fft(df_seasonal['AMJJAS'].values[mask['AMJJAS']], nfft)}, index=df_seasonal['AMJJAS'].index[mask['AMJJAS']])
-df_seasonal_fft = df_seasonal_fft[ (df_seasonal_fft.index > df_seasonal_fft.index[int(nfft/2)]) & (df_seasonal_fft.index <= df_seasonal_fft.index[-int(nfft/2)])] # edge effect truncation                   
-
-# SMOOTH: seasonal extracts ( decadal )
-
-#df_seasonal_fft = df_seasonal.copy()[mask].rolling(10, center=True).mean()
+#df_seasonal_fft = df_seasonal_fft[ (df_seasonal_fft.index > df_seasonal_fft.index[int(nfft/2)]) & (df_seasonal_fft.index <= df_seasonal_fft.index[-int(nfft/2)])] # edge effect truncation                   
 
 #==============================================================================
 # PLOTS
@@ -331,7 +308,7 @@ fig, ax = plt.subplots(figsize=(15,10))
 # plt.fill_between(df_yearly.index, df_yearly.Tg-df_yearly_sd.Tg, df_yearly.Tg+df_yearly_sd.Tg, ls='-', lw=1, color='black', alpha=0.2, zorder=0, label=r'Yearly $\mu\pm\sigma$')
 plt.plot(df.index, df['MA'], ls='-', lw=3, color='red', alpha=0.2, zorder=1, label=r'Station (' + station_code + r'): $T_{g}$ 5yr MA')
 plt.plot(df.index, df['FFT'], ls='-', lw=2, color='red', alpha=1, zorder=1, label=r'Station (' + station_code + r': $T_{g}$ 5yr MA (FFT low pass)')
-plt.plot(df.index, df['LOESS'], ls='--', lw=2, color=default_color, alpha=1, zorder=1, label=r'Station (' + station_code + r'): $T_{g}$ LOESS ($\alpha$=0.1)')
+plt.plot(df.index, df['LOESS'], ls='--', lw=2, color=default_color, alpha=1, zorder=1, label=r'Station (' + station_code + r'): $T_{g}$ 5yr MA (LOESS $\alpha$=' + str(loess_frac) +')' )
 plt.xlabel('Year', fontsize=fontsize)
 if use_anomalies == True:
     plt.ylabel(r'2m Temperature anomaly (from ' + str(baseline_start) + '-' + str(baseline_end) + r'), $^{\circ}$' + temperature_unit, fontsize=fontsize)
@@ -345,12 +322,12 @@ plt.savefig(figstr, dpi=300)
 plt.close('all')
 
 #------------------------------------------------------------------------------    
-# PLOT: seasonal extracts
+# PLOT: seasonal extracts: 4-season
 #------------------------------------------------------------------------------    
 
-print('plotting seasonal timeseries ... ')   
+print('plotting seasonal timeseries: 4-season ... ')   
   
-figstr = station_code + '-' + 'wrapper' + '-' + 'seasonal.png'
+figstr = station_code + '-' + 'wrapper' + '-' + '4-seasonal.png'
 titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$: decadal and FFT low pass fit'
                
 fig, ax = plt.subplots(figsize=(15,10))    
@@ -358,14 +335,10 @@ plt.plot(df_seasonal.index, df_seasonal['DJF'].rolling(10,center=True).mean(), l
 plt.plot(df_seasonal.index, df_seasonal['MAM'].rolling(10,center=True).mean(), ls='-', lw=3, color='red', alpha=0.2, zorder=1)
 plt.plot(df_seasonal.index, df_seasonal['JJA'].rolling(10,center=True).mean(), ls='-', lw=3, color='purple', alpha=0.2, zorder=1)
 plt.plot(df_seasonal.index, df_seasonal['SON'].rolling(10,center=True).mean(), ls='-', lw=3, color='green', alpha=0.2, zorder=1)
-#plt.plot(df_seasonal.index, df_seasonal['AMJJAS'].rolling(10,center=True).mean(), ls='-', lw=3, color='red', alpha=1, zorder=1, label=r'AMJJAS')
-#plt.plot(df_seasonal.index, df_seasonal['ONDJFM'].rolling(10,center=True).mean(), ls='-', lw=3, color='blue', alpha=1, zorder=1, label=r'ONDJFM')
 plt.plot(df_seasonal_fft.index, df_seasonal_fft['DJF'], ls='-', lw=3, color='blue', alpha=1, zorder=1, label=r'Winter')
 plt.plot(df_seasonal_fft.index, df_seasonal_fft['MAM'], ls='-', lw=3, color='red', alpha=1, zorder=1, label=r'Spring')
 plt.plot(df_seasonal_fft.index, df_seasonal_fft['JJA'], ls='-', lw=3, color='purple', alpha=1, zorder=1, label=r'Summer')
 plt.plot(df_seasonal_fft.index, df_seasonal_fft['SON'], ls='-', lw=3, color='green', alpha=1, zorder=1, label=r'Autumn')
-#plt.plot(df_seasonal_fft.index, df_seasonal_fft['AMJJAS'], ls='-', lw=3, color='red', alpha=1, zorder=1, label=r'AMJJAS')
-#plt.plot(df_seasonal_fft.index, df_seasonal_fft['ONDJFM'], ls='-', lw=3, color='blue', alpha=1, zorder=1, label=r'ONDJFM')
 plt.xlabel('Year', fontsize=fontsize)
 if use_anomalies == True:
     plt.ylabel(r'2m Temperature anomaly (from ' + str(baseline_start) + '-' + str(baseline_end) + r'), $^{\circ}$' + temperature_unit, fontsize=fontsize)
@@ -379,30 +352,19 @@ plt.savefig(figstr, dpi=300)
 plt.close('all')
 
 #------------------------------------------------------------------------------    
-# PLOT: seasonal differences
+# PLOT: seasonal extracts: 2-season
 #------------------------------------------------------------------------------    
-    
-print('plotting seasonal differences ... ')   
 
-figstr = station_code + '-' + 'wrapper' + '-' + 'seasonal-difference.png'
-titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$ differences: decadal (FFT low pass)'
+print('plotting seasonal timeseries: 2 season ... ')   
+  
+figstr = station_code + '-' + 'wrapper' + '-' + '2-seasonal.png'
+titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$: decadal and FFT low pass fit'
                
 fig, ax = plt.subplots(figsize=(15,10))    
-#plt.fill_between(df_yearly.index, -df_yearly_sd.Tg, +df_yearly_sd.Tg, ls='-', lw=1, color='black', alpha=0.2, zorder=0, label=r'Yearly $\mu\pm\sigma$')    
-mask = np.isfinite(df_seasonal_fft)
-mask = mask['DJF'] & mask['MAM'] & mask['JJA'] & mask['SON']
-plt.plot(df_seasonal_fft.index[mask], df_seasonal_fft['DJF'][mask]-df_seasonal_fft['MAM'][mask], ls='-', lw=3, color='blue', alpha=1, zorder=1, label=r'DJF-MAM')
-plt.plot(df_seasonal_fft.index[mask], df_seasonal_fft['DJF'][mask]-df_seasonal_fft['JJA'][mask], ls='-', lw=3, color='cyan', alpha=1, zorder=1, label=r'DJF-JJA')
-plt.plot(df_seasonal_fft.index[mask], df_seasonal_fft['DJF'][mask]-df_seasonal_fft['SON'][mask], ls='-', lw=3, color='purple', alpha=1, zorder=1, label=r'DJF-SON')
-plt.plot(df_seasonal_fft.index[mask], df_seasonal_fft['MAM'][mask]-df_seasonal_fft['JJA'][mask], ls='-', lw=3, color='red', alpha=1, zorder=1, label=r'MAM-JJA')
-plt.plot(df_seasonal_fft.index[mask], df_seasonal_fft['MAM'][mask]-df_seasonal_fft['SON'][mask], ls='-', lw=3, color='orange', alpha=1, zorder=1, label=r'MAM-SON')
-plt.plot(df_seasonal_fft.index[mask], df_seasonal_fft['JJA'][mask]-df_seasonal_fft['SON'][mask], ls='-', lw=3, color='yellow', alpha=1, zorder=1, label=r'JJA-SON')
-plt.axhline(y=np.nanmean( df_seasonal_fft['DJF'][mask]-df_seasonal_fft['MAM'][mask] ), ls='--', lw=3, color='blue')
-plt.axhline(y=np.nanmean( df_seasonal_fft['DJF'][mask]-df_seasonal_fft['JJA'][mask] ), ls='--', lw=3, color='cyan')
-plt.axhline(y=np.nanmean( df_seasonal_fft['DJF'][mask]-df_seasonal_fft['SON'][mask] ), ls='--', lw=3, color='purple')
-plt.axhline(y=np.nanmean( df_seasonal_fft['MAM'][mask]-df_seasonal_fft['JJA'][mask] ), ls='--', lw=3, color='red')
-plt.axhline(y=np.nanmean( df_seasonal_fft['MAM'][mask]-df_seasonal_fft['SON'][mask] ), ls='--', lw=3, color='orange')
-plt.axhline(y=np.nanmean( df_seasonal_fft['JJA'][mask]-df_seasonal_fft['SON'][mask] ), ls='--', lw=3, color='yellow')
+plt.plot(df_seasonal.index, df_seasonal['AMJJAS'].rolling(10,center=True).mean(), ls='-', lw=3, color='orange', alpha=0.2, zorder=1)
+plt.plot(df_seasonal.index, df_seasonal['ONDJFM'].rolling(10,center=True).mean(), ls='-', lw=3, color='navy', alpha=0.2, zorder=1)
+plt.plot(df_seasonal_fft.index, df_seasonal_fft['AMJJAS'], ls='-', lw=3, color='orange', alpha=1, zorder=1, label=r'AMJJAS')
+plt.plot(df_seasonal_fft.index, df_seasonal_fft['ONDJFM'], ls='-', lw=3, color='navy', alpha=1, zorder=1, label=r'ONDJFM')
 plt.xlabel('Year', fontsize=fontsize)
 if use_anomalies == True:
     plt.ylabel(r'2m Temperature anomaly (from ' + str(baseline_start) + '-' + str(baseline_end) + r'), $^{\circ}$' + temperature_unit, fontsize=fontsize)
@@ -411,6 +373,63 @@ else:
 plt.title(titlestr, fontsize=fontsize)
 plt.tick_params(labelsize=fontsize)    
 plt.legend(loc='lower right', ncol=1, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)    
+fig.tight_layout()
+plt.savefig(figstr, dpi=300)
+plt.close('all')
+
+#------------------------------------------------------------------------------    
+# PLOT: seasonal difference boxplots
+#------------------------------------------------------------------------------    
+
+print('plotting seasonal difference boxplots ... ')   
+
+mask = np.isfinite(df_seasonal)
+mask = mask['DJF'] & mask['MAM'] & mask['JJA'] & mask['SON']
+diffs = [
+
+    df_seasonal['ONDJFM'][mask]-df_seasonal['SON'][mask],
+    df_seasonal['ONDJFM'][mask]-df_seasonal['DJF'][mask],
+    df_seasonal['ONDJFM'][mask]-df_seasonal['MAM'][mask],
+    df_seasonal['AMJJAS'][mask]-df_seasonal['MAM'][mask],
+    df_seasonal['AMJJAS'][mask]-df_seasonal['JJA'][mask],
+    df_seasonal['AMJJAS'][mask]-df_seasonal['SON'][mask],    
+    df_seasonal['DJF'][mask]-df_seasonal['MAM'][mask],
+    df_seasonal['DJF'][mask]-df_seasonal['SON'][mask],
+    df_seasonal['JJA'][mask]-df_seasonal['MAM'][mask],
+    df_seasonal['JJA'][mask]-df_seasonal['SON'][mask]
+    
+]    
+
+figstr = station_code + '-' + 'wrapper' + '-' + 'seasonal-difference-boxplots.png'
+titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$ difference boxplots'
+               
+fig, ax = plt.subplots(figsize=(15,10))    
+boxprops = dict(linestyle='-', lw=2, color='black')
+medianprops = dict(ls='-', lw=3, color='goldenrod')
+capprops = dict(ls='-', lw=3, color='teal')
+flierprops = dict(marker='s', markerfacecolor='lightgrey', markersize=5)
+boxlist = [
+    'ONDJFM - SON', 'ONDJFM - DJF', 'ONDJFM - MAM',
+    'AMJJAS - MAM', 'AMJJAS - JJA', 'AMJJAS - SON',
+    'DJF - MAM', 'DJF - SON', 'JJA - MAM', 'JJA - SON']
+box_colors = ['white','white','white','white','white','white','white','white','white','white']
+bp = ax.boxplot( diffs, notch=False, bootstrap=10000, conf_intervals=None, whis=True, showfliers=False, 
+            medianprops=medianprops, capprops=capprops, flierprops=flierprops )
+for i in range(len(boxlist)):
+    box = bp['boxes'][i]
+    box_x = []
+    box_y = []
+    for j in range(5):
+        box_x.append(box.get_xdata()[j])
+        box_y.append(box.get_ydata()[j])
+    box_coords = np.column_stack([box_x, box_y])
+    ax.add_patch(Polygon(box_coords, facecolor=box_colors[i]))
+plt.ylabel(r'Mean seasonal difference, $^{\circ}$' + temperature_unit, fontsize=fontsize)
+plt.title(titlestr, fontsize=fontsize)
+xticklabels = boxlist
+ax.set_xticks(np.arange(1,len(boxlist)+1))
+ax.set_xticklabels(xticklabels, rotation=90, ha="right", rotation_mode="anchor") 
+plt.tick_params(labelsize=fontsize)    
 fig.tight_layout()
 plt.savefig(figstr, dpi=300)
 plt.close('all')    

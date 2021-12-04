@@ -473,7 +473,7 @@ plt.close('all')
 
 print('plotting seasonal timeseries ( 130 intervals ) ... ')   
                             
-figstr = station_code + '-' + 'anomaly' + '-' + 'vs' + '-' + 'nao' + '-' 'timeseries' + '-' + season + '-' + '130 years' + '.png'
+figstr = station_code + '-' + 'anomaly' + '-' + 'vs' + '-' + 'nao' + '-' 'timeseries' + '-' + season + '-' + '130-years' + '.png'
 titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') ' + season + ' seasonal mean $T_g$ anomaly (from 1961-1990) vs NAO'
                
 fig, ax = plt.subplots(2,1, figsize=(15,10))    

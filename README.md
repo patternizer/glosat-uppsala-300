@@ -4,7 +4,7 @@
 ![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-wrapper-2-seasonal.png)
 ![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-wrapper-seasonal-difference-boxplots.png)
 ![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-anomaly-vs-nao-correlation-ONDJFM.png)
-![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-anomaly-vs-nao-timeseries-ONDJFM-130 years.png)
+![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-anomaly-vs-nao-timeseries-ONDJFM-130-years.png)
 
 # glosat-uppsala-300
 

@@ -1,7 +1,10 @@
-![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/uppsala-stockholm-diff.png)
+![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/uppsala-and-stockholm-diff.png)
 ![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/uppsala-and-stockholm-fft-smooth.png)
-![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/uppsala-seasonal.png)
-![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/stockholm-seasonal.png)
+![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-wrapper-4-seasonal.png)
+![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-wrapper-2-seasonal.png)
+![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-wrapper-seasonal-difference-boxplots.png)
+![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-anomaly-vs-nao-correlation-ONDJFM.png)
+![image](https://github.com/patternizer/glosat-uppsala-300/blob/main/024581-anomaly-vs-nao-timeseries-ONDJFM-130 years.png)
 
 # glosat-uppsala-300
 
@@ -12,6 +15,8 @@ Python codebase to extract seasonal means for Uppsala (024581) and Stockholm (02
 * `uppsala-seasonal-means-and-nao.py` - python script to compare seasonal mean instrumental land surface temperature timeseries from Uppsala with seasonal NAO
 * `uppsala-stockholm-comparison.py` - python script to compare instrumental land surface temperature timeseries from Uppsala and Stockholm
 * `seasonal-means-wrapper.py` - python script to extract seasonal means
+* `filter_cru_dft.py` - python helper function script to perform FFT low pass smoothing of timeseries
+* `ml_optimisation.csv` - look-up table used by filter_cru_dft.py
 
 ## Instructions for use
 

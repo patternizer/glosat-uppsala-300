@@ -4,8 +4,8 @@
 #------------------------------------------------------------------------------
 # PROGRAM: uppsala-stockholm-comparison.py
 #------------------------------------------------------------------------------
-# Version 0.1
-# 20 July, 2021
+# Version 0.2
+# 14 January, 2021
 # Michael Taylor
 # https://patternizer.github.io
 # patternizer AT gmail DOT com
@@ -106,6 +106,9 @@ nsmooth = 60                 # 5yr MA monthly
 nfft = 16                    # power of 2 for the DFT
 loess_frac = 0.2             # LOESS window 
 
+filename_glosat = 'DATA/df_temp.pkl'    
+glosat_version = 'GloSAT.p04'
+
 #------------------------------------------------------------------------------
 # METHODS: 
 #------------------------------------------------------------------------------
@@ -172,7 +175,7 @@ if load_glosat == True:
             
     print('loading temperatures ...')
         
-    df_temp = pd.read_pickle('DATA/df_temp.pkl', compression='bz2')    
+    df_temp = pd.read_pickle( filename_glosat, compression='bz2' )    
     
     stationcode_uppsala = '024581'
     stationcode_stockholm = '024851'
@@ -237,7 +240,7 @@ if plot_differences == True:
     print('plotting timeseries and differences: monthly Tg ...')
         
     figstr = 'uppsala-and-stockholm-diff.png'
-    titlestr = 'GloSAT.p03: Uppsala (024581) versus Stockholm (024851) monthly $T_g$'
+    titlestr = glosat_version + ': Uppsala (024581) versus Stockholm (024851) monthly $T_g$'
     
     mask = np.isfinite(df_uppsala.Tg) & np.isfinite(df_stockholm.Tg)
     
@@ -271,7 +274,7 @@ if plot_smooth == True:
     print('plotting filtered timeseries: 5-yr MA ... ')   
                                           
     figstr = 'uppsala-and-stockholm-fft-smooth.png'
-    titlestr = 'GloSAT.p03: Uppsala (024581) and Stockholm (024851) monthly $T_g$'
+    titlestr = glosat_version + ': Uppsala (024581) and Stockholm (024851) monthly $T_g$'
                
     fig, ax = plt.subplots(figsize=(15,10))    
     plt.plot(df_uppsala.index, df_uppsala['MA'], ls='-', lw=2, color='red', alpha=0.2, zorder=1, label=r'Uppsala (024581): $T_{g}$ 5yr MA')

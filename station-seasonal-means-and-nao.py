@@ -2,10 +2,10 @@
 # -*- coding: utf-8 -*-
 
 #------------------------------------------------------------------------------
-# PROGRAM: seasonal-means-and-nao.py
+# PROGRAM: station-seasonal-means-and-nao.py
 #------------------------------------------------------------------------------
 # Version 0.1
-# 30 November, 2021
+# 17 February, 2021
 # Michael Taylor
 # https://patternizer.github.io
 # patternizer AT gmail DOT com
@@ -113,7 +113,6 @@ station_code = '024581'     # Uppsala
 #season = 'SON'
 season = 'ONDJFM'
 #season = 'AMJJAS'
-
 filename_glosat = 'DATA/df_temp.pkl'        
 filename_nao = 'DATA/naomonjurg.dat'
 
@@ -178,9 +177,9 @@ def merge_fix_cols(df1,df2,var):
     df_merged: merge of observations into container
     var: 'time' or name of datetime column
     '''
-        
+    
     df_merged = pd.merge( df1, df2, how='left', left_on=var, right_on=var)    
-        
+    
     for col in df_merged:
         if col.endswith('_y'):
             df_merged.rename(columns = lambda col:col.rstrip('_y'),inplace=True)
@@ -211,9 +210,9 @@ def linear_regression_ols(x,y):
 #------------------------------------------------------------------------------
             
 print('loading temperatures ...')
-
+        
 df_temp = pd.read_pickle( filename_glosat, compression='bz2' )    
-df = df_temp[ df_temp['stationcode'] == station_code ]
+df = df_temp[df_temp['stationcode']==station_code]
 station_name = df['stationname'].unique()[0]
     
 # SET: time axis container
@@ -279,7 +278,7 @@ print('loading NAO indices ...')
 #1658	Dec	-0.30
 
 nheader = 26
-f = open(filename_nao)
+f = open( filename_nao )
 lines = f.readlines()
 years = []
 months = [] 
@@ -354,58 +353,48 @@ df_seasonal = pd.DataFrame({
     'db_DJF':db_DJF, 'db_MAM':db_MAM, 'db_JJA':db_JJA, 'db_SON':db_SON, 'db_ONDJFM':db_ONDJFM, 'db_AMJJAS':db_AMJJAS}, 
     index = t_seasonal)     
 
-if season == 'DJF':
-    da_season = 'da_DJF'
-    db_season = 'db_DJF'
-elif season == 'MAM':
-    da_season = 'da_MAM'
-    db_season = 'db_MAM'
-elif season == 'JJA':
-    da_season = 'da_JJA'
-    db_season = 'db_JJA'
-elif season == 'SON':
-    da_season = 'da_SON'
-    db_season = 'db_SON'
-elif season == 'ONDJFM':
-    da_season = 'da_ONDJFM'
-    db_season = 'db_ONDJFM'
-elif season == 'AMJJAS':
-    da_season = 'da_AMJJAS'
-    db_season = 'db_AMJJAS'
+def calc_season( season, df_seasonal ):
+    
+    if season == 'DJF':
+        da_season = 'da_DJF'
+        db_season = 'db_DJF'
+    elif season == 'MAM':
+        da_season = 'da_MAM'
+        db_season = 'db_MAM'
+    elif season == 'JJA':
+        da_season = 'da_JJA'
+        db_season = 'db_JJA'
+    elif season == 'SON':
+        da_season = 'da_SON'
+        db_season = 'db_SON'
+    elif season == 'ONDJFM':
+        da_season = 'da_ONDJFM'
+        db_season = 'db_ONDJFM'
+    elif season == 'AMJJAS':
+        da_season = 'da_AMJJAS'
+        db_season = 'db_AMJJAS'
 
-mask = np.isfinite(df_seasonal[da_season]) & np.isfinite(df_seasonal[db_season])
-tem = df_seasonal[da_season][mask]
-nao = df_seasonal[db_season][mask]
-t_tem = tem.index
-t_nao = nao.index
-t_tem1 = tem[tem.index.year<=1740].index
-t_nao1 = nao[nao.index.year<=1740].index
-t_tem2 = tem[tem.index.year>1740].index
-t_nao2 = nao[nao.index.year>1740].index
-t_tem3 = tem[ (tem.index.year>=1761) & (tem.index.year<=1890) ].index
-t_nao3 = nao[ (nao.index.year>=1761) & (nao.index.year<=1890) ].index
-t_tem4 = tem[ (tem.index.year>=1891) & (tem.index.year<=2020) ].index
-t_nao4 = nao[ (nao.index.year>=1891) & (nao.index.year<=2020) ].index
+    mask = np.isfinite(df_seasonal[da_season]) & np.isfinite(df_seasonal[db_season])
+    tem = df_seasonal[da_season][mask]
+    nao = df_seasonal[db_season][mask]
 
-#------------------------------------------------------------------------------
-# OLS: linear regression
-#------------------------------------------------------------------------------
+    #------------------------------------------------------------------------------
+    # OLS: linear regression
+    #------------------------------------------------------------------------------
+    
+    X = tem.values
+    Y = nao.values
+    corrcoef = scipy.stats.pearsonr(X, Y)[0]
+    OLS_X, OLS_Y, OLS_slope, OLS_intercept = linear_regression_ols(X, Y)
+    
+    minval = np.nanmin([np.nanmin(X),np.nanmin(Y)])
+    maxval = np.nanmax([np.nanmax(X),np.nanmax(Y)])      
+    if np.abs(minval) > maxval: maxval = minval * -1.0
 
-X1 = tem[tem.index.year<=1740].values
-Y1 = nao[nao.index.year<=1740].values
-X2 = tem[tem.index.year>1740].values
-Y2 = nao[nao.index.year>1740].values
-X3 = tem[ (tem.index.year>=1761) & (tem.index.year<=1890) ].values
-Y3 = nao[ (nao.index.year>=1761) & (nao.index.year<=1890) ].values
-X4 = tem[ (tem.index.year>=1891) & (tem.index.year<=2020) ].values
-Y4 = nao[ (nao.index.year>=1891) & (nao.index.year<=2020) ].values
+    return tem, nao, corrcoef, OLS_X, OLS_Y, OLS_slope, OLS_intercept, minval, maxval
 
-minval = np.nanmin([np.nanmin(X1),np.nanmin(Y1),np.nanmin(X2),np.nanmin(Y2)])
-maxval = np.nanmax([np.nanmax(X1),np.nanmax(Y1),np.nanmax(X2),np.nanmax(Y2)])        
-corrcoef_old = scipy.stats.pearsonr(X1, Y1)[0]
-corrcoef_new = scipy.stats.pearsonr(X2, Y2)[0]
-OLS_X_old, OLS_Y_old, OLS_slope_old, OLS_intercept_old = linear_regression_ols(X1, Y1)
-OLS_X_new, OLS_Y_new, OLS_slope_new, OLS_intercept_new = linear_regression_ols(X2, Y2)
+season = 'DJF'
+tem, nao, corrcoef, OLS_X, OLS_Y, OLS_slope, OLS_intercept, minval, maxval = calc_season( season, df_seasonal )
 
 #==============================================================================
 # PLOTS
@@ -423,43 +412,19 @@ else:
 print('plotting seasonal timeseries ... ')   
                             
 figstr = station_code + '-' + 'anomaly' + '-' + 'vs' + '-' + 'nao' + '-' 'timeseries' + '-' + season + '.png'
-titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') ' + season + ' seasonal mean $T_g$ anomaly (from 1961-1990) vs NAO'
+titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') ' + season + ' mean $T_g$ anomaly (from 1961-1990) vs NAO'
                
 fig, ax = plt.subplots(figsize=(15,10))    
-plt.fill_between( t_tem, tem, ls='-', lw=0.5, color='blue', alpha=0.8, zorder=1, label=r'$T_{g}$')
-plt.fill_between( t_nao, nao, ls='-', lw=0.5, color='red', alpha=0.8, zorder=1, label=r'$NAO$')
-plt.axvline( x=pd.to_datetime('1740-01-01', format='%Y-%m-%d'), ls='dashed', lw=2, color='black', label='1739/1740')
+plt.fill_between( tem.index, tem, ls='-', lw=0.5, color='blue', alpha=0.8, zorder=1, label=r'$T_{g}$')
+plt.fill_between( nao.index, nao, ls='-', lw=0.5, color='red', alpha=0.8, zorder=1, label=r'$NAO$')
 plt.axhline( y=0, ls='dashed', lw=1, color='black')
-plt.xlim( pd.to_datetime(t_tem[0], format='%Y-%m-%d'), pd.to_datetime('1760-01-01', format='%Y-%m-%d') )
+#plt.xlim( pd.to_datetime('1678-01-01', format='%Y-%m-%d'), pd.to_datetime('2021-01-01', format='%Y-%m-%d') )
+plt.ylim(minval, maxval)
 plt.xlabel('Year', fontsize=fontsize)
 plt.ylabel(season + ' seasonal mean', fontsize=fontsize)
 plt.title(titlestr, fontsize=fontsize)
 plt.tick_params(labelsize=fontsize)    
 plt.legend(loc='lower right', ncol=1, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)    
-fig.tight_layout()
-plt.savefig(figstr, dpi=300, bbox_inches='tight')
-plt.close('all')
-
-print('plotting seasonal timeseries ( 130 intervals ) ... ')   
-                            
-figstr = station_code + '-' + 'anomaly' + '-' + 'vs' + '-' + 'nao' + '-' 'timeseries' + '-' + season + '-' + '130-years' + '.png'
-titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') ' + season + ' seasonal mean $T_g$ anomaly (from 1961-1990) vs NAO'
-               
-fig, ax = plt.subplots(2,1, figsize=(15,10))    
-ax[0].fill_between( t_tem3, X3, ls='-', lw=0.5, color='blue', alpha=0.8, zorder=1, label=r'$T_{g}$')
-ax[0].fill_between( t_nao3, Y3, ls='-', lw=0.5, color='red', alpha=0.8, zorder=1, label=r'$NAO$')
-ax[0].axhline( y=0, ls='dashed', lw=1, color='black')
-ax[0].set_xlabel('Year', fontsize=fontsize)
-ax[0].set_ylabel(season + ' seasonal mean', fontsize=fontsize)
-ax[0].set_title(titlestr, fontsize=fontsize)
-ax[0].tick_params(labelsize=fontsize)    
-ax[1].fill_between( t_tem4, X4, ls='-', lw=0.5, color='blue', alpha=0.8, zorder=1, label=r'$T_{g}$')
-ax[1].fill_between( t_nao4, Y4, ls='-', lw=0.5, color='red', alpha=0.8, zorder=1, label=r'$NAO$')
-ax[1].axhline( y=0, ls='dashed', lw=1, color='black')
-ax[1].set_xlabel('Year', fontsize=fontsize)
-ax[1].set_ylabel(season + ' seasonal mean', fontsize=fontsize)
-ax[1].tick_params(labelsize=fontsize)    
-ax[1].legend(loc='lower right', ncol=1, markerscale=1, facecolor='lightgrey', framealpha=0.5, fontsize=fontsize)    
 fig.tight_layout()
 plt.savefig(figstr, dpi=300, bbox_inches='tight')
 plt.close('all')
@@ -471,14 +436,11 @@ plt.close('all')
 print('plotting seasonal correlation ... ')   
    
 figstr = station_code + '-' + 'anomaly' + '-' + 'vs' + '-' + 'nao' + '-' 'correlation' + '-' + season + '.png'
-titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') ' + season + ' seasonal mean $T_g$ anomaly (from 1961-1990) vs NAO'
+titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') ' + season + ' mean $T_g$ anomaly (from 1961-1990) vs NAO'
                
 fig, ax = plt.subplots(figsize=(15,10))    
-plt.plot(OLS_X_new, OLS_Y_new, color='blue', ls='-', lw=2, zorder=0, label=r'OLS ($\alpha x + \beta$)' + r': $\alpha$=' + str(np.round(OLS_slope_new,3)) + ' ' + r'$\beta$=' + str(np.round(OLS_intercept_new,3)) + ' ' + r'(Pearson $\rho$='+str(np.round(corrcoef_new,3)) + ')' )
-plt.plot(OLS_X_old, OLS_Y_old, color='navy', ls='-', lw=2, zorder=0, label=r'OLS ($\alpha x + \beta$)' + r': $\alpha$=' + str(np.round(OLS_slope_old,3)) + ' ' + r'$\beta$=' + str(np.round(OLS_intercept_old,3)) + ' ' + r'(Pearson $\rho$='+str(np.round(corrcoef_old,3)) + ')')
-plt.scatter(X2, Y2, alpha=0.5, marker='o', color='blue', s=50, facecolor='lightblue', ls='-', lw=1, zorder=1, label=r'> 1740')
-plt.scatter(X1, Y1, alpha=0.5, marker='o', color='navy', s=50, facecolor='navy', ls='-', lw=1, zorder=1, label=r'$\leq$ 1740')
-plt.scatter(tem[tem.index.year==1740].values, nao[nao.index.year==1740].values, alpha=0.5, marker='o', color='red', s=100, facecolor='red', ls='-', lw=1, zorder=1, label=r'1739/1740')
+plt.plot(OLS_X, OLS_Y, color='blue', ls='-', lw=2, zorder=0, label=r'OLS ($\alpha x + \beta$)' + r': $\alpha$=' + str(np.round(OLS_slope,3)) + ' ' + r'$\beta$=' + str(np.round(OLS_intercept,3)) + ' ' + r'(Pearson $\rho$='+str(np.round(corrcoef,3)) + ')' )
+plt.scatter(tem.values, nao.values, alpha=0.5, marker='o', color='blue', s=50, facecolor='lightblue', ls='-', lw=1, zorder=1)
 ax.plot([minval,maxval], [minval,maxval], color='black', ls='--', lw=1, alpha=1, zorder=0)    
 ax.set_xlim(minval, maxval)
 ax.set_ylim(minval, maxval)

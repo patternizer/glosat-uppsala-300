@@ -4,8 +4,8 @@
 #------------------------------------------------------------------------------
 # PROGRAM: seasonal-means-wrapper.py
 #------------------------------------------------------------------------------
-# Version 0.2
-# 29 November, 2021
+# Version 0.3
+# 13 January, 2021
 # Michael Taylor
 # https://patternizer.github.io
 # patternizer AT gmail DOT com
@@ -64,15 +64,7 @@ import statsmodels.api as sm
 # Datetime libraries
 import cftime
 import calendar 
-# print(calendar.calendar(2020))
-# print(calendar.month(2020,2))
-# calendar.isleap(2020)
 from datetime import date, time, datetime, timedelta
-#today = datetime.now()
-#tomorrow = today + pd.to_timedelta(1,unit='D')
-#tomorrow = today + timedelta(days=1)
-#birthday = datetime(1970,11,1,0,0,0).strftime('%Y-%m-%d %H:%M')
-#print('Week:',today.isocalendar()[1])
 
 # Silence library version notifications
 import warnings
@@ -102,6 +94,7 @@ else:
     temperature_unit = 'C'
 
 use_anomalies = True
+use_20crv3 = False
 use_fft_edge_truncation = False
 
 nsmooth = 60                 # 5yr MA monthly
@@ -117,6 +110,12 @@ station_code = '024581'     # Uppsala
 #station_code = '103810'     # Berlin-Dahlem (breakpoint: 1908)
 #station_code = '685880'     # Durban/Louis Botha (breakpoint: 1939)
 #station_code = '680320'     # Maun (breakpoint: 1925)
+
+filename_20crv3 = 'DATA/ensemble_mean_anomalies_lon_17.6_lat_59.9.csv'
+#filename_20crv3 = 'DATA/ensemble_mean_anomalies_5x5_lon_17.6_lat_59.9.csv'
+filename_glosat = 'DATA/df_temp.pkl'        
+
+glosat_version = 'GloSAT.p04'
 
 #----------------------------------------------------------------------------
 # DARK THEME
@@ -142,21 +141,6 @@ if use_dark_theme == True:
 else:
 
 	print('using Seaborn graphics ...')
-
-#    matplotlib.rcParams['text.usetex'] = False
-#    plt.rc('text',color='black')
-#    plt.rc('lines',color='black')
-#    plt.rc('patch',edgecolor='black')
-#    plt.rc('grid',color='lightgray')
-#    plt.rc('xtick',color='black')
-#    plt.rc('ytick',color='black')
-#    plt.rc('axes',labelcolor='black')
-#    plt.rc('axes',facecolor='white')    
-#    plt.rc('axes',edgecolor='black')
-#    plt.rc('figure',facecolor='white')
-#    plt.rc('figure',edgecolor='white')
-#    plt.rc('savefig',edgecolor='white')
-#    plt.rc('savefig',facecolor='white')
 
 # Calculate current time
 
@@ -186,8 +170,6 @@ def merge_fix_cols(df1,df2,var):
     '''
     
     df_merged = pd.merge( df1, df2, how='left', left_on=var, right_on=var)    
-#   df_merged = pd.merge( df1, df2, how='left', on=var)    
-#   df_merged = df1.merge(df2, how='left', on=var)
     
     for col in df_merged:
         if col.endswith('_y'):
@@ -198,14 +180,84 @@ def merge_fix_cols(df1,df2,var):
         else:
             pass
     return df_merged
-    
+
+if use_20crv3 == True:
+	    
+	#------------------------------------------------------------------------------    
+	# LOAD: 20CRv3 Uppsala ensemble mean 2m temperature anomaly
+	#------------------------------------------------------------------------------
+
+	du_20CR = pd.read_csv( filename_20crv3, index_col=0 )
+	du_20CR.rename( columns = {'t':'date', 'ts':'Tg'}, inplace=True )             
+	du_20CR.date = pd.date_range( start='1806', end='2016', freq='MS' )[0:-1]
+
+	# SET: monthly and seasonal time vectors
+
+	t_monthly = pd.date_range( start='1678', end='2022', freq='MS' )[0:-1]
+	t_seasonal = [ pd.to_datetime( str(np.arange(1678,2022)[i+1])+'-01-01') for i in range(2021-1678) ] # Timestamp('YYYY-01-01 00:00:00')]
+
+	# MERGE: 20CRv3 onto 1678-2021 time axis
+					   
+	du_temp = pd.DataFrame({ 'date':t_monthly }) # 1678-2020 inclusive
+	du_temp['Tg'] = np.ones( len(du_temp) ) * np.nan
+	du_merged = merge_fix_cols(du_temp, du_20CR, 'date')
+	ts_monthly = du_merged.Tg.values
+	du = pd.DataFrame({'Tg':ts_monthly}, index=t_monthly)     
+
+	# CALCULATE: moving average
+
+	du['MA'] = du['Tg'].rolling(nsmooth, center=True).mean()
+	mask = np.isfinite(du['MA'])
+
+	# RESAMPLE: to yearly using xarray
+
+	du_xr = du.to_xarray()    
+	du_xr_resampled = du_xr.Tg.resample(index='AS').mean().to_dataset()
+	du_xr_resampled_sd = du_xr.Tg.resample(index='AS').std().to_dataset()
+	du_yearly = pd.DataFrame({'Tg':du_xr_resampled.Tg.values}, index = du_xr_resampled.index.values)
+	du_yearly_sd = pd.DataFrame({'Tg':du_xr_resampled_sd.Tg.values}, index = du_xr_resampled_sd.index.values)
+	   
+	# CALCULATE: LOESS fit ( use Pandas rolling to interpolate )
+		
+	loess = sm.nonparametric.lowess(du['MA'].values[mask], du['MA'].index[mask], frac=loess_frac)       
+	da = pd.DataFrame({'LOESS':loess[:,1]}, index=du['MA'].index[mask])
+	du['LOESS'] = da                     
+
+	# CALCULATE: FFT low pass
+
+	da = pd.DataFrame({'FFT':smooth_fft(du['MA'].values[mask], nfft)}, index=du['MA'].index[mask])
+	du['FFT'] = da.rolling(nsmooth, center=True).mean()
+	if use_fft_edge_truncation == True: du['FFT'] = da[(da.index>da.index[int(nfft/2)]) & (da.index<=da.index[-int(nfft/2)])] # edge effect truncation
+			
+	# EXTRACT: seasonal components ( D from first year only --> N-1 seasonal estimates )
+
+	trim_months = len(t_monthly)%12
+	da = pd.DataFrame({'Tg':ts_monthly[:-1-trim_months]}, index=t_monthly[:-1-trim_months])         
+	DJF = ( da[da.index.month==12]['Tg'].values + da[da.index.month==1]['Tg'].values[1:] + da[da.index.month==2]['Tg'].values[1:] ) / 3
+	MAM = ( da[da.index.month==3]['Tg'].values[1:] + da[da.index.month==4]['Tg'].values[1:] + da[da.index.month==5]['Tg'].values[1:] ) / 3
+	JJA = ( da[da.index.month==6]['Tg'].values[1:] + da[da.index.month==7]['Tg'].values[1:] + da[da.index.month==8]['Tg'].values[1:] ) / 3
+	SON = ( da[da.index.month==9]['Tg'].values[1:] + da[da.index.month==10]['Tg'].values[1:] + da[da.index.month==11]['Tg'].values[1:] ) / 3
+	ONDJFM = ( da[da.index.month==10]['Tg'].values[1:] + da[da.index.month==11]['Tg'].values[1:] + da[da.index.month==12]['Tg'].values + da[da.index.month==1]['Tg'].values[1:] + da[da.index.month==2]['Tg'].values[1:] + da[da.index.month==3]['Tg'].values[1:] ) / 6
+	AMJJAS = ( da[da.index.month==4]['Tg'].values[1:] + da[da.index.month==5]['Tg'].values[1:] + da[da.index.month==6]['Tg'].values[1:] + da[da.index.month==7]['Tg'].values[1:] + da[da.index.month==8]['Tg'].values[1:] + da[da.index.month==9]['Tg'].values[1:] ) / 6
+	du_seasonal = pd.DataFrame({'DJF':DJF, 'MAM':MAM, 'JJA':JJA, 'SON':SON, 'ONDJFM':ONDJFM, 'AMJJAS':AMJJAS}, index = t_seasonal)     
+
+	mask = np.isfinite(du_seasonal)
+	du_seasonal_fft = pd.DataFrame(index=du_seasonal.index)
+	du_seasonal_fft['DJF'] = pd.DataFrame({'DJF':smooth_fft(du_seasonal['DJF'].values[mask['DJF']], nfft)}, index=du_seasonal['DJF'].index[mask['DJF']])
+	du_seasonal_fft['MAM'] = pd.DataFrame({'DJF':smooth_fft(du_seasonal['MAM'].values[mask['MAM']], nfft)}, index=du_seasonal['MAM'].index[mask['MAM']])
+	du_seasonal_fft['JJA'] = pd.DataFrame({'DJF':smooth_fft(du_seasonal['JJA'].values[mask['JJA']], nfft)}, index=du_seasonal['JJA'].index[mask['JJA']])
+	du_seasonal_fft['SON'] = pd.DataFrame({'DJF':smooth_fft(du_seasonal['SON'].values[mask['SON']], nfft)}, index=du_seasonal['SON'].index[mask['SON']])
+	du_seasonal_fft['ONDJFM'] = pd.DataFrame({'ONDJFM':smooth_fft(du_seasonal['ONDJFM'].values[mask['ONDJFM']], nfft)}, index=du_seasonal['ONDJFM'].index[mask['ONDJFM']])
+	du_seasonal_fft['AMJJAS'] = pd.DataFrame({'AMJJAS':smooth_fft(du_seasonal['AMJJAS'].values[mask['AMJJAS']], nfft)}, index=du_seasonal['AMJJAS'].index[mask['AMJJAS']])
+	#du_seasonal_fft = du_seasonal_fft[ (du_seasonal_fft.index > du_seasonal_fft.index[int(nfft/2)]) & (du_seasonal_fft.index <= du_seasonal_fft.index[-int(nfft/2)])] # edge effect truncation                   
+
 #------------------------------------------------------------------------------    
 # LOAD: GloSAT temperature archive: CRUTEM5.0.1.0
 #------------------------------------------------------------------------------
             
 print('loading temperatures ...')
         
-df_temp = pd.read_pickle('DATA/df_temp.pkl', compression='bz2')    
+df_temp = pd.read_pickle( filename_glosat, compression='bz2' )    
 df = df_temp[df_temp['stationcode']==station_code]
 station_name = df['stationname'].unique()[0]
     
@@ -300,7 +352,7 @@ else:
 print('plotting filtered timeseries ... ')   
                             
 figstr = station_code + '-' + 'wrapper' + '-' + 'fft-smooth.png'
-titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') monthly $T_g$'
+titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') monthly $T_g$'
                
 fig, ax = plt.subplots(figsize=(15,10))    
 # plt.plot(df.index, df['Tg'], ls='-', lw=1, color='black', alpha=0.1, zorder=0, label=r'Station (' + station_code + r'): $T_{g}$ monthly')
@@ -328,17 +380,27 @@ plt.close('all')
 print('plotting seasonal timeseries: 4-season ... ')   
   
 figstr = station_code + '-' + 'wrapper' + '-' + '4-seasonal.png'
-titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$: decadal and FFT low pass fit'
+titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$: decadal and FFT low pass fit'
                
 fig, ax = plt.subplots(figsize=(15,10))    
-plt.plot(df_seasonal.index, df_seasonal['DJF'].rolling(10,center=True).mean(), ls='-', lw=3, color='blue', alpha=0.2, zorder=1)
-plt.plot(df_seasonal.index, df_seasonal['MAM'].rolling(10,center=True).mean(), ls='-', lw=3, color='red', alpha=0.2, zorder=1)
-plt.plot(df_seasonal.index, df_seasonal['JJA'].rolling(10,center=True).mean(), ls='-', lw=3, color='purple', alpha=0.2, zorder=1)
-plt.plot(df_seasonal.index, df_seasonal['SON'].rolling(10,center=True).mean(), ls='-', lw=3, color='green', alpha=0.2, zorder=1)
-plt.plot(df_seasonal_fft.index, df_seasonal_fft['DJF'], ls='-', lw=3, color='blue', alpha=1, zorder=1, label=r'Winter')
-plt.plot(df_seasonal_fft.index, df_seasonal_fft['MAM'], ls='-', lw=3, color='red', alpha=1, zorder=1, label=r'Spring')
-plt.plot(df_seasonal_fft.index, df_seasonal_fft['JJA'], ls='-', lw=3, color='purple', alpha=1, zorder=1, label=r'Summer')
-plt.plot(df_seasonal_fft.index, df_seasonal_fft['SON'], ls='-', lw=3, color='green', alpha=1, zorder=1, label=r'Autumn')
+if use_20crv3 == True:
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['DJF'], ls='-', lw=3, color='blue', alpha=1, zorder=1, label=r'Winter')
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['MAM'], ls='-', lw=3, color='red', alpha=1, zorder=1, label=r'Spring')
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['JJA'], ls='-', lw=3, color='purple', alpha=1, zorder=1, label=r'Summer')
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['SON'], ls='-', lw=3, color='green', alpha=1, zorder=1, label=r'Autumn')
+	plt.plot(du_seasonal_fft.index, du_seasonal_fft['DJF'], ls='--', lw=3, color='blue', alpha=1, zorder=1, label=r'Winter (20CRv3)')
+	plt.plot(du_seasonal_fft.index, du_seasonal_fft['MAM'], ls='--', lw=3, color='red', alpha=1, zorder=1, label=r'Spring (20CRv3)')
+	plt.plot(du_seasonal_fft.index, du_seasonal_fft['JJA'], ls='--', lw=3, color='purple', alpha=1, zorder=1, label=r'Summer (20CRv3)')
+	plt.plot(du_seasonal_fft.index, du_seasonal_fft['SON'], ls='--', lw=3, color='green', alpha=1, zorder=1, label=r'Autumn (20CRv3)')
+else:
+	plt.plot(df_seasonal.index, df_seasonal['DJF'].rolling(10,center=True).mean(), ls='-', lw=3, color='blue', alpha=0.2, zorder=1)
+	plt.plot(df_seasonal.index, df_seasonal['MAM'].rolling(10,center=True).mean(), ls='-', lw=3, color='red', alpha=0.2, zorder=1)
+	plt.plot(df_seasonal.index, df_seasonal['JJA'].rolling(10,center=True).mean(), ls='-', lw=3, color='purple', alpha=0.2, zorder=1)
+	plt.plot(df_seasonal.index, df_seasonal['SON'].rolling(10,center=True).mean(), ls='-', lw=3, color='green', alpha=0.2, zorder=1)
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['DJF'], ls='-', lw=3, color='blue', alpha=1, zorder=1, label=r'Winter')
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['MAM'], ls='-', lw=3, color='red', alpha=1, zorder=1, label=r'Spring')
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['JJA'], ls='-', lw=3, color='purple', alpha=1, zorder=1, label=r'Summer')
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['SON'], ls='-', lw=3, color='green', alpha=1, zorder=1, label=r'Autumn')
 plt.xlabel('Year', fontsize=fontsize)
 if use_anomalies == True:
     plt.ylabel(r'2m Temperature anomaly (from ' + str(baseline_start) + '-' + str(baseline_end) + r'), $^{\circ}$' + temperature_unit, fontsize=fontsize)
@@ -358,13 +420,19 @@ plt.close('all')
 print('plotting seasonal timeseries: 2 season ... ')   
   
 figstr = station_code + '-' + 'wrapper' + '-' + '2-seasonal.png'
-titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$: decadal and FFT low pass fit'
+titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$: decadal and FFT low pass fit'
                
-fig, ax = plt.subplots(figsize=(15,10))    
-plt.plot(df_seasonal.index, df_seasonal['AMJJAS'].rolling(10,center=True).mean(), ls='-', lw=3, color='orange', alpha=0.2, zorder=1)
-plt.plot(df_seasonal.index, df_seasonal['ONDJFM'].rolling(10,center=True).mean(), ls='-', lw=3, color='navy', alpha=0.2, zorder=1)
-plt.plot(df_seasonal_fft.index, df_seasonal_fft['AMJJAS'], ls='-', lw=3, color='orange', alpha=1, zorder=1, label=r'AMJJAS')
-plt.plot(df_seasonal_fft.index, df_seasonal_fft['ONDJFM'], ls='-', lw=3, color='navy', alpha=1, zorder=1, label=r'ONDJFM')
+fig, ax = plt.subplots(figsize=(15,10))   
+if use_20crv3 == True: 
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['AMJJAS'], ls='-', lw=3, color='orange', alpha=1, zorder=1, label=r'AMJJAS')
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['ONDJFM'], ls='-', lw=3, color='navy', alpha=1, zorder=1, label=r'ONDJFM') 	#plt.plot(du_seasonal.index, du_seasonal['AMJJAS'].rolling(10,center=True).mean(), ls='--', lw=3, color='orange', alpha=0.2, zorder=1)
+	plt.plot(du_seasonal_fft.index, du_seasonal_fft['AMJJAS'], ls='--', lw=3, color='orange', alpha=1, zorder=1, label=r'AMJJAS (20CRv3)')
+	plt.plot(du_seasonal_fft.index, du_seasonal_fft['ONDJFM'], ls='--', lw=3, color='navy', alpha=1, zorder=1, label=r'ONDJFM (20CRv3)')
+else:
+	plt.plot(df_seasonal.index, df_seasonal['AMJJAS'].rolling(10,center=True).mean(), ls='-', lw=3, color='orange', alpha=0.2, zorder=1)
+	plt.plot(df_seasonal.index, df_seasonal['ONDJFM'].rolling(10,center=True).mean(), ls='-', lw=3, color='navy', alpha=0.2, zorder=1)
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['AMJJAS'], ls='-', lw=3, color='orange', alpha=1, zorder=1, label=r'AMJJAS')
+	plt.plot(df_seasonal_fft.index, df_seasonal_fft['ONDJFM'], ls='-', lw=3, color='navy', alpha=1, zorder=1, label=r'ONDJFM') 
 plt.xlabel('Year', fontsize=fontsize)
 if use_anomalies == True:
     plt.ylabel(r'2m Temperature anomaly (from ' + str(baseline_start) + '-' + str(baseline_end) + r'), $^{\circ}$' + temperature_unit, fontsize=fontsize)
@@ -386,7 +454,6 @@ print('plotting seasonal difference boxplots ... ')
 mask = np.isfinite(df_seasonal)
 mask = mask['DJF'] & mask['MAM'] & mask['JJA'] & mask['SON']
 diffs = [
-
     df_seasonal['ONDJFM'][mask]-df_seasonal['SON'][mask],
     df_seasonal['ONDJFM'][mask]-df_seasonal['DJF'][mask],
     df_seasonal['ONDJFM'][mask]-df_seasonal['MAM'][mask],
@@ -397,11 +464,10 @@ diffs = [
     df_seasonal['DJF'][mask]-df_seasonal['SON'][mask],
     df_seasonal['JJA'][mask]-df_seasonal['MAM'][mask],
     df_seasonal['JJA'][mask]-df_seasonal['SON'][mask]
-    
 ]    
 
 figstr = station_code + '-' + 'wrapper' + '-' + 'seasonal-difference-boxplots.png'
-titlestr = 'GloSAT.p03: ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$ difference boxplots'
+titlestr = glosat_version + ': ' + station_name.upper() + ' (' + station_code + ') seasonal $T_g$ difference boxplots'
                
 fig, ax = plt.subplots(figsize=(15,10))    
 boxprops = dict(linestyle='-', lw=2, color='black')
